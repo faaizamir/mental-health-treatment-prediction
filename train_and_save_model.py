@@ -75,10 +75,18 @@ def main():
     results = []
     for name, model in candidate_models.items():
         model.fit(X_train_res, y_train_res)
+        pred = model.predict(X_test_scaled)
         proba = model.predict_proba(X_test_scaled)[:, 1]
-        results.append((name, roc_auc_score(y_test, proba)))
-    best_model_name = max(results, key=lambda r: r[1])[0]
-    print("Baseline comparison (ROC-AUC):", results)
+        results.append({
+            "model_name": name,
+            "accuracy": accuracy_score(y_test, pred),
+            "precision": precision_score(y_test, pred),
+            "recall": recall_score(y_test, pred),
+            "f1_score": f1_score(y_test, pred),
+            "roc_auc": roc_auc_score(y_test, proba),
+        })
+    best_model_name = max(results, key=lambda r: r["roc_auc"])["model_name"]
+    print("Baseline comparison:", results)
     print("Best baseline model:", best_model_name)
 
     # ---- Hyperparameter tuning on the winner ------------------------------
@@ -140,6 +148,8 @@ def main():
         json.dump(feature_columns, f)
     with open(f"{ARTIFACT_DIR}/metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
+    with open(f"{ARTIFACT_DIR}/baseline_comparison.json", "w") as f:
+        json.dump(results, f, indent=2)
 
     print(f"\nSaved model, scaler, encoders, feature list, and metrics to ./{ARTIFACT_DIR}/")
 

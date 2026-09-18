@@ -35,11 +35,13 @@ def load_artifacts():
         feature_columns = json.load(f)
     with open(f"{ARTIFACT_DIR}/metrics.json") as f:
         metrics = json.load(f)
+    with open(f"{ARTIFACT_DIR}/baseline_comparison.json") as f:
+        baseline_comparison = json.load(f)
     explainer = shap.TreeExplainer(model)
-    return model, scaler, encoders, feature_columns, metrics, explainer
+    return model, scaler, encoders, feature_columns, metrics, baseline_comparison, explainer
 
 
-model, scaler, encoders, feature_columns, metrics, explainer = load_artifacts()
+model, scaler, encoders, feature_columns, metrics, baseline_comparison, explainer = load_artifacts()
 
 # Human-friendly labels for the form (raw column name -> display label)
 LABELS = {
@@ -81,6 +83,20 @@ with st.sidebar:
         "saw during training or tuning."
     )
 
+    with st.expander(f"Why {metrics['model_name']}, not the other two?"):
+        st.caption(
+            "Three different algorithms were trained on identical data and "
+            "compared on the same metrics — the table below is that "
+            "comparison (before tuning). The one with the best ROC-AUC "
+            "(the metric least sensitive to an arbitrary 0.5 cutoff) was "
+            "carried forward and tuned further; the numbers above already "
+            f"reflect that tuning, which improved {metrics['model_name']} "
+            "further from its baseline shown here."
+        )
+        comp_df = pd.DataFrame(baseline_comparison).set_index("model_name")
+        comp_df = comp_df.sort_values("roc_auc", ascending=False)
+        st.dataframe(comp_df.style.format("{:.3f}"), use_container_width=True)
+
 with st.form("prediction_form"):
     st.subheader("Tell us about yourself")
     user_input = {}
@@ -116,6 +132,28 @@ if submitted:
     shap.plots.waterfall(shap_values[0], show=False)
     st.pyplot(fig, bbox_inches="tight")
     plt.close(fig)
+
+    with st.expander("How to read this chart"):
+        st.markdown(
+            "This is a **SHAP waterfall plot** — it explains *this one* "
+            "prediction, not the model in general.\n\n"
+            "- **`E[f(x)]` at the bottom** is the baseline: the average "
+            "prediction across everyone in the dataset, before knowing "
+            "anything about this specific person.\n"
+            "- **Each bar is one feature**, listed from most to least "
+            "influential for this prediction. The number next to each "
+            "feature is the value *you* entered for it.\n"
+            "- **Red bars push the prediction up** (toward *will* seek "
+            "treatment); **blue bars push it down** (toward *won't*).\n"
+            "- **The bars stack on top of each other**, starting from the "
+            "baseline at the bottom and ending at **`f(x)`** at the top — "
+            "that final number is this person's actual predicted "
+            "probability.\n\n"
+            "In short: it's a running total that shows exactly which "
+            "answers moved the prediction, by how much, and in which "
+            "direction — rather than just handing you a single probability "
+            "with no explanation of where it came from."
+        )
 
     st.info(
         "This is a demo built on a public survey dataset for a data analytics "
