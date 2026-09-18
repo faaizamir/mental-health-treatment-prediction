@@ -67,6 +67,20 @@ st.caption(
     f"{metrics['roc_auc']:.2f}) trained on a public mental health survey dataset."
 )
 
+with st.sidebar:
+    st.header("📊 Model Performance")
+    st.caption(f"Final model: **{metrics['model_name']}** (tuned)")
+    st.metric("Accuracy", f"{metrics['accuracy']:.1%}")
+    st.metric("Precision", f"{metrics['precision']:.1%}")
+    st.metric("Recall", f"{metrics['recall']:.1%}")
+    st.metric("F1-Score", f"{metrics['f1_score']:.1%}")
+    st.metric("ROC-AUC", f"{metrics['roc_auc']:.3f}")
+    st.divider()
+    st.caption(
+        "Metrics are computed on a held-out 20% test set the model never "
+        "saw during training or tuning."
+    )
+
 with st.form("prediction_form"):
     st.subheader("Tell us about yourself")
     user_input = {}
@@ -113,6 +127,8 @@ st.divider()
 st.caption(
     f"Model: tuned {metrics['model_name']} · "
     f"Accuracy: {metrics['accuracy']:.2f} · "
+    f"Precision: {metrics['precision']:.2f} · "
+    f"Recall: {metrics['recall']:.2f} · "
     f"F1: {metrics['f1_score']:.2f} · "
     f"ROC-AUC: {metrics['roc_auc']:.2f}"
 )
