@@ -1,0 +1,118 @@
+"""
+Mental Health Treatment Prediction — Streamlit app.
+
+Loads the pre-trained model + scaler + encoders (produced by
+train_and_save_model.py) and serves interactive predictions with a
+SHAP-based explanation of each individual prediction.
+
+Run locally:
+    streamlit run app.py
+"""
+
+import json
+
+import joblib
+import matplotlib.pyplot as plt
+import pandas as pd
+import shap
+import streamlit as st
+
+ARTIFACT_DIR = "artifacts"
+
+st.set_page_config(
+    page_title="Mental Health Treatment Predictor",
+    page_icon="🧠",
+    layout="centered",
+)
+
+
+@st.cache_resource
+def load_artifacts():
+    model = joblib.load(f"{ARTIFACT_DIR}/model.joblib")
+    scaler = joblib.load(f"{ARTIFACT_DIR}/scaler.joblib")
+    encoders = joblib.load(f"{ARTIFACT_DIR}/encoders.joblib")
+    with open(f"{ARTIFACT_DIR}/feature_columns.json") as f:
+        feature_columns = json.load(f)
+    with open(f"{ARTIFACT_DIR}/metrics.json") as f:
+        metrics = json.load(f)
+    explainer = shap.TreeExplainer(model)
+    return model, scaler, encoders, feature_columns, metrics, explainer
+
+
+model, scaler, encoders, feature_columns, metrics, explainer = load_artifacts()
+
+# Human-friendly labels for the form (raw column name -> display label)
+LABELS = {
+    "Gender": "Gender",
+    "Country": "Country",
+    "Occupation": "Occupation",
+    "self_employed": "Are you self-employed?",
+    "family_history": "Family history of mental illness?",
+    "Days_Indoors": "How many days have you stayed indoors recently?",
+    "Growing_Stress": "Is your stress level growing?",
+    "Changes_Habits": "Have your habits changed recently?",
+    "Mental_Health_History": "Personal history of mental health issues?",
+    "Mood_Swings": "How would you describe your mood swings?",
+    "Coping_Struggles": "Are you struggling to cope?",
+    "Work_Interest": "Have you lost interest in work?",
+    "Social_Weakness": "Do you feel social weakness / withdrawal?",
+    "mental_health_interview": "Comfortable discussing mental health in a job interview?",
+    "care_options": "Aware of your employer's mental health care options?",
+}
+
+st.title("🧠 Mental Health Treatment Predictor")
+st.caption(
+    "Estimates the likelihood that someone will seek mental health treatment, "
+    "based on a tuned XGBoost model (ROC-AUC ≈ "
+    f"{metrics['roc_auc']:.2f}) trained on a public mental health survey dataset."
+)
+
+with st.form("prediction_form"):
+    st.subheader("Tell us about yourself")
+    user_input = {}
+    for col in feature_columns:
+        options = list(encoders[col].classes_)
+        user_input[col] = st.selectbox(LABELS.get(col, col), options, key=col)
+    submitted = st.form_submit_button("Predict")
+
+if submitted:
+    # Build a single-row DataFrame in the exact training feature order
+    row = {col: encoders[col].transform([user_input[col]])[0] for col in feature_columns}
+    X_input = pd.DataFrame([row], columns=feature_columns)
+    X_input_scaled = pd.DataFrame(
+        scaler.transform(X_input), columns=feature_columns
+    )
+
+    proba = float(model.predict_proba(X_input_scaled)[0, 1])
+    prediction = "Likely to seek treatment" if proba >= 0.5 else "Unlikely to seek treatment"
+
+    st.subheader("Result")
+    col1, col2 = st.columns(2)
+    col1.metric("Prediction", prediction)
+    col2.metric("Probability", f"{proba:.1%}")
+    st.progress(min(max(proba, 0.0), 1.0))
+
+    st.subheader("Why the model predicted this")
+    st.caption(
+        "Each bar shows how much a feature pushed this specific prediction "
+        "toward (red) or away from (blue) 'will seek treatment'."
+    )
+    shap_values = explainer(X_input_scaled)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    shap.plots.waterfall(shap_values[0], show=False)
+    st.pyplot(fig, bbox_inches="tight")
+    plt.close(fig)
+
+    st.info(
+        "This is a demo built on a public survey dataset for a data analytics "
+        "portfolio project — it is not a medical or diagnostic tool.",
+        icon="ℹ️",
+    )
+
+st.divider()
+st.caption(
+    f"Model: tuned {metrics['model_name']} · "
+    f"Accuracy: {metrics['accuracy']:.2f} · "
+    f"F1: {metrics['f1_score']:.2f} · "
+    f"ROC-AUC: {metrics['roc_auc']:.2f}"
+)

@@ -8,3 +8,5 @@ shap
 imbalanced-learn
 jupyter
 ipykernel
+streamlit
+joblib
